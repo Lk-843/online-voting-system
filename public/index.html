@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoteSecure – Login</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .input-icon-wrap { position: relative; }
+    .input-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 1rem; pointer-events: none; }
+    .input-icon-wrap .form-control { padding-left: 42px; }
+    .features { display: flex; gap: 1rem; margin-top: 1.5rem; justify-content: center; flex-wrap: wrap; }
+    .feature-pill { display: flex; align-items: center; gap: 5px; background: var(--bg); padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+    .particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    .particle { position: absolute; width: 4px; height: 4px; background: rgba(255,255,255,0.3); border-radius: 50%; animation: particle-float linear infinite; }
+  </style>
+</head>
+<body>
+  <div class="auth-page">
+    <div class="particles" id="particles"></div>
+
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="auth-logo-icon">🗳️</div>
+        <h1>Vote<span class="brand-accent">Secure</span></h1>
+        <p>Secure & Transparent Online Voting Platform</p>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchTab('login')">🔑 Sign In</button>
+        <button class="auth-tab" onclick="switchTab('register')">✨ Register</button>
+      </div>
+
+      <div id="alert" class="alert"></div>
+
+      <!-- Login Form -->
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <div class="input-icon-wrap">
+            <span class="input-icon">📧</span>
+            <input type="email" id="login-email" class="form-control" placeholder="you@example.com" autocomplete="email" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <div class="input-icon-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="login-password" class="form-control" placeholder="••••••••" required />
+          </div>
+        </div>
+        <button type="submit" id="login-btn" class="btn btn-primary btn-full" style="padding:13px;font-size:0.95rem;margin-top:4px">
+          Sign In to Vote
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="register-form" style="display:none" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <div class="input-icon-wrap">
+            <span class="input-icon">👤</span>
+            <input type="text" id="reg-name" class="form-control" placeholder="John Doe" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <div class="input-icon-wrap">
+            <span class="input-icon">📧</span>
+            <input type="email" id="reg-email" class="form-control" placeholder="you@example.com" autocomplete="email" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password <small style="color:var(--text-muted);text-transform:none;font-weight:400">(min 6 chars)</small></label>
+          <div class="input-icon-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="reg-password" class="form-control" placeholder="••••••••" required minlength="6" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Confirm Password</label>
+          <div class="input-icon-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="reg-confirm" class="form-control" placeholder="••••••••" required />
+          </div>
+        </div>
+        <button type="submit" id="register-btn" class="btn btn-primary btn-full" style="padding:13px;font-size:0.95rem;margin-top:4px">
+          Create My Account
+        </button>
+      </form>
+
+      <div class="features">
+        <div class="feature-pill">🔐 Encrypted</div>
+        <div class="feature-pill">✅ Anonymous</div>
+        <div class="feature-pill">⚡ Real-time</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    if (API.token()) {
+      const user = API.user();
+      window.location.href = user?.role === 'admin' ? '/admin' : '/dashboard';
+    }
+
+    // Generate floating particles
+    const container = document.getElementById('particles');
+    for (let i = 0; i < 20; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.cssText = `left:${Math.random()*100}%;top:${Math.random()*100}%;width:${Math.random()*6+2}px;height:${Math.random()*6+2}px;animation-duration:${Math.random()*15+8}s;animation-delay:${Math.random()*5}s;opacity:${Math.random()*0.4+0.1}`;
+      container.appendChild(p);
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.auth-tab').forEach((t, i) => {
+        t.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'register'));
+      });
+      document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+      document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
+      document.getElementById('alert').style.display = 'none';
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+
+      // Validate email has @
+      if (!email.includes('@'))
+        return showAlert('alert', '❌ Invalid email — please include @ in your email address (e.g. you@gmail.com)');
+      if (!password)
+        return showAlert('alert', '❌ Please enter your password.');
+
+      const btn = document.getElementById('login-btn');
+      setLoading(btn, true);
+      try {
+        const data = await API.post('/auth/login', { email, password });
+        API.saveAuth(data.token, data.user);
+        window.location.href = data.user.role === 'admin' ? '/admin' : '/dashboard';
+      } catch (err) {
+        showAlert('alert', '❌ ' + err.message);
+      } finally { setLoading(btn, false); }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const name = document.getElementById('reg-name').value.trim();
+      const email = document.getElementById('reg-email').value.trim();
+      const pass = document.getElementById('reg-password').value;
+      const confirm = document.getElementById('reg-confirm').value;
+
+      // Frontend validations
+      if (!name) return showAlert('alert', '❌ Please enter your full name.');
+      if (!email.includes('@') || !email.includes('.'))
+        return showAlert('alert', '❌ Please enter a valid email address (must contain @).');
+      if (pass.length < 6) return showAlert('alert', '❌ Password must be at least 6 characters.');
+      if (pass !== confirm) return showAlert('alert', '❌ Passwords do not match.');
+
+      const btn = document.getElementById('register-btn');
+      setLoading(btn, true);
+      try {
+        await API.post('/auth/register', { name, email, password: pass });
+        showAlert('alert', '🎉 Account created! Please sign in.', 'success');
+        switchTab('login');
+      } catch (err) {
+        showAlert('alert', '❌ ' + err.message);
+      } finally { setLoading(btn, false); }
+    }
+  </script>
+  <style>
+    @keyframes particle-float {
+      0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+    }
+  </style>
+</body>
+</html>

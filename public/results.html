@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoteSecure – Results</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .results-hero {
+      background: var(--gradient);
+      border-radius: var(--radius);
+      padding: 2rem 2.5rem;
+      color: #fff;
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+    }
+    .results-hero::before { content: '📊'; position: absolute; right: 2rem; top: 50%; transform: translateY(-50%); font-size: 5rem; opacity: 0.12; }
+    .selector-card { background: var(--surface); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .selector-label { font-size: 0.85rem; font-weight: 700; color: var(--primary); white-space: nowrap; }
+    .selector-card select { flex: 1; min-width: 250px; }
+    .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+    .chart-card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.75rem; border: 1px solid rgba(255,255,255,0.9); }
+    .chart-title { font-size: 1rem; font-weight: 800; color: var(--primary); margin-bottom: 1.25rem; display: flex; align-items: center; gap: 8px; }
+    .result-row { display: flex; align-items: center; gap: 14px; margin-bottom: 1.25rem; padding: 1rem; background: #FAFBFF; border-radius: var(--radius-sm); border: 1px solid var(--border); transition: var(--transition); }
+    .result-row:hover { background: #EFF6FF; border-color: #BFDBFE; transform: translateX(4px); }
+    .result-row:last-child { margin-bottom: 0; }
+    .result-rank { width: 32px; height: 32px; border-radius: 10px; background: var(--gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800; flex-shrink: 0; }
+    .result-rank.gold { background: var(--gradient-accent); box-shadow: 0 4px 12px rgba(245,158,11,0.35); }
+    .result-rank.silver { background: linear-gradient(135deg,#9CA3AF,#6B7280); }
+    .result-info { flex: 1; }
+    .result-name { font-weight: 800; font-size: 0.95rem; color: var(--primary); }
+    .result-party { font-size: 0.75rem; color: var(--secondary); font-weight: 600; margin-top: 2px; }
+    .result-pct { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; font-weight: 600; }
+    .result-count { font-weight: 900; color: var(--primary); font-size: 1rem; white-space: nowrap; text-align: right; }
+    .result-count small { display: block; font-size: 0.72rem; color: var(--text-muted); font-weight: 500; }
+    .locked-state { text-align: center; padding: 4rem 2rem; }
+    .locked-icon { font-size: 4rem; margin-bottom: 1rem; display: block; animation: pulse-glow 2s ease-in-out infinite; }
+    .locked-title { font-size: 1.25rem; font-weight: 900; color: var(--primary); margin-bottom: 8px; }
+    .locked-sub { color: var(--text-muted); font-size: 0.9rem; }
+    @media(max-width:768px) { .results-grid { grid-template-columns: 1fr; } .selector-card { flex-direction: column; align-items: stretch; } }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">🗳️ Vote<span class="brand-accent">Secure</span></a>
+    <div class="navbar-nav">
+      <a href="/dashboard" class="nav-link">🏠 <span>Dashboard</span></a>
+      <a href="/results" class="nav-link active">📊 <span>Results</span></a>
+      <div class="nav-user" id="nav-user"></div>
+      <button class="btn btn-ghost btn-sm" onclick="API.logout()">Logout</button>
+    </div>
+  </nav>
+
+  <div class="container page-content">
+    <!-- Hero -->
+    <div class="results-hero fade-in">
+      <div>
+        <div style="font-size:1.5rem;font-weight:900;margin-bottom:4px">Election Results 📊</div>
+        <div style="font-size:0.875rem;opacity:0.85">Live vote counts and statistics</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="loadResults()">🔄 Refresh</button>
+    </div>
+
+    <!-- Election Selector -->
+    <div class="selector-card fade-in">
+      <div class="selector-label">📋 Select Election:</div>
+      <select id="election-select" class="form-control" onchange="loadResults()">
+        <option value="">-- Choose an election to view results --</option>
+      </select>
+    </div>
+
+    <div id="alert" class="alert"></div>
+
+    <div id="results-container">
+      <div class="empty-state">
+        <span class="icon">📊</span>
+        <h3>No Election Selected</h3>
+        <p>Choose an election from the dropdown above to view results.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    if (!API.requireAuth()) throw new Error('Not authenticated');
+    renderNavUser();
+
+    let barChart = null, pieChart = null;
+    const COLORS = ['#1E3A8A','#3B82F6','#F59E0B','#10B981','#EF4444','#8B5CF6','#EC4899','#14B8A6','#F97316','#06B6D4'];
+
+    async function init() {
+      try {
+        const elections = await API.get('/elections');
+        const select = document.getElementById('election-select');
+        elections.forEach(e => {
+          const opt = document.createElement('option');
+          opt.value = e.id;
+          opt.textContent = `${e.title} (${e.status})`;
+          select.appendChild(opt);
+        });
+        const urlId = new URLSearchParams(window.location.search).get('id');
+        if (urlId) { select.value = urlId; loadResults(); }
+      } catch (err) { showAlert('alert', err.message); }
+    }
+
+    async function loadResults() {
+      const id = document.getElementById('election-select').value;
+      if (!id) return;
+      const container = document.getElementById('results-container');
+      container.innerHTML = '<div class="empty-state"><span class="icon">⏳</span><p>Loading results...</p></div>';
+
+      try {
+        const electionData = await API.get(`/elections/${id}`);
+        const user = API.user();
+
+        if (!electionData.results_published && user.role !== 'admin') {
+          container.innerHTML = `
+            <div class="card fade-in">
+              <div class="locked-state">
+                <span class="locked-icon">🔒</span>
+                <div class="locked-title">Results Not Published Yet</div>
+                <div class="locked-sub">The admin hasn't published the results for <strong>${electionData.title}</strong> yet.<br>Please check back later.</div>
+              </div>
+            </div>`;
+          return;
+        }
+
+        const { results, total } = await API.get(`/votes/results/${id}`);
+        renderResults(electionData, results, total);
+      } catch (err) { showAlert('alert', err.message); }
+    }
+
+    function renderResults(election, results, total) {
+      const container = document.getElementById('results-container');
+      if (!results.length) {
+        container.innerHTML = '<div class="empty-state"><span class="icon">📊</span><h3>No Votes Yet</h3><p>No votes have been cast in this election.</p></div>';
+        return;
+      }
+
+      const winner = results[0];
+      const winnerPct = total > 0 ? ((winner.vote_count / total) * 100).toFixed(1) : 0;
+
+      container.innerHTML = `
+        ${election.status === 'closed' && total > 0 ? `
+        <div class="winner-banner fade-in">
+          <div class="trophy">🏆</div>
+          <div>
+            <div class="winner-name">${winner.name} Wins!</div>
+            <div class="winner-sub">${winner.party ? winner.party + ' · ' : ''}${winner.vote_count} votes · ${winnerPct}% of total votes</div>
+          </div>
+        </div>` : ''}
+
+        <div class="card fade-in" style="margin-bottom:1.5rem">
+          <div class="card-header">
+            <div class="card-title">🗳️ ${election.title}</div>
+            <span class="badge badge-${election.status}">${election.status}</span>
+          </div>
+          <div style="display:flex;gap:2rem;flex-wrap:wrap">
+            <div><div style="font-size:2rem;font-weight:900;color:var(--primary)">${total}</div><div style="font-size:0.78rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Total Votes</div></div>
+            <div><div style="font-size:2rem;font-weight:900;color:var(--success)">${results.length}</div><div style="font-size:0.78rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Candidates</div></div>
+            <div><div style="font-size:2rem;font-weight:900;color:var(--accent)">${winnerPct}%</div><div style="font-size:0.78rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Leading Vote</div></div>
+          </div>
+        </div>
+
+        <div class="results-grid">
+          <div class="chart-card fade-in">
+            <div class="chart-title">📊 Vote Distribution</div>
+            <canvas id="bar-chart"></canvas>
+          </div>
+          <div class="chart-card fade-in">
+            <div class="chart-title">🥧 Vote Share</div>
+            <canvas id="pie-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="card fade-in" style="margin-top:1.5rem">
+          <div class="card-header"><div class="card-title">🏅 Detailed Standings</div></div>
+          ${results.map((r, i) => {
+            const pct = total > 0 ? ((r.vote_count / total) * 100).toFixed(1) : 0;
+            const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : '';
+            return `
+            <div class="result-row fade-in" style="animation-delay:${i*0.08}s">
+              <div class="result-rank ${rankClass}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i+1}</div>
+              <div class="result-info">
+                <div class="result-name">${r.name}</div>
+                ${r.party ? `<div class="result-party">🏛️ ${r.party}</div>` : ''}
+                <div class="progress-bar-wrap">
+                  <div class="progress-bar" style="width:${pct}%;background:${COLORS[i % COLORS.length]}"></div>
+                </div>
+                <div class="result-pct">${pct}% of votes</div>
+              </div>
+              <div class="result-count">${r.vote_count}<small>votes</small></div>
+            </div>`;
+          }).join('')}
+        </div>`;
+
+      if (barChart) barChart.destroy();
+      if (pieChart) pieChart.destroy();
+
+      const labels = results.map(r => r.name);
+      const data = results.map(r => r.vote_count);
+      const colors = results.map((_, i) => COLORS[i % COLORS.length]);
+
+      barChart = new Chart(document.getElementById('bar-chart'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Votes', data, backgroundColor: colors, borderRadius: 10, borderSkipped: false }] },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#F0F4FF' } },
+            x: { grid: { display: false } }
+          },
+          animation: { duration: 1000, easing: 'easeOutQuart' }
+        }
+      });
+
+      pieChart = new Chart(document.getElementById('pie-chart'), {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 4, borderColor: '#fff', hoverOffset: 12 }] },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom', labels: { padding: 18, font: { size: 12, weight: '600' } } } },
+          cutout: '58%',
+          animation: { duration: 1000, easing: 'easeOutQuart' }
+        }
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
